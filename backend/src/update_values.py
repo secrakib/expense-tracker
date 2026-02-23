@@ -1,11 +1,11 @@
 from backend.src.initial import initial
 from typing import Optional
-from backend.src.value_exist_check import value_exist_check
+from backend.src.value_exist_check import value_exist_check_id
 
 def update_values(location: str, id: int, user_name: Optional[str] = None, category: Optional[str] = None, expense: Optional[str] = None, date: Optional[str] = None):
     conn, cursor = initial(location)
     
-    value_exist_check(location,id)
+    value_exist_check_id(location,id)
 
     if user_name is None and category is None and expense is None and date is None:
         raise ValueError("At least one value should be given.")
