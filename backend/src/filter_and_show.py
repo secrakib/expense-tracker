@@ -9,7 +9,7 @@ def filter_expenses(
     date: Optional[str] = None,
     min_expense: Optional[float] = None,
     max_expense: Optional[float] = None,
-) -> None:
+) -> list[tuple]:
     """
     Params: 
         location   - path to the database
@@ -53,7 +53,6 @@ def filter_expenses(
     
     cursor.execute(query, params)
     rows = cursor.fetchall()
-    print(rows)
     conn.close()
 
-    return None
+    return rows

@@ -3,4 +3,4 @@ from backend.test.globals import location
 
 
 
-add_values("Rakib", "Cinema", 132.31, "2026-13-29",location)
+add_values("Rakib", "cloth", 555.31, "2027-12-28",location)
