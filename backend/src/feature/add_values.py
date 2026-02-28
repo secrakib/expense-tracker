@@ -1,4 +1,4 @@
-from backend.src.initial import initial
+from backend.src.feature.initial import initial
 
 def add_values(user_name:str, category:str, expense:str, date:str,location:str)->None:
     '''

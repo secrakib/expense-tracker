@@ -1,1 +1,0 @@
-location = 'backend/test/test_database/database.db'

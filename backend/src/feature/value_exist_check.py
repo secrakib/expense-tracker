@@ -1,5 +1,4 @@
-from backend.src.initial import initial
-
+from backend.src.feature.initial import initial
 def value_exist_check_id(location:str,id:int):
     conn, cursor = initial(location)
 
@@ -12,7 +11,7 @@ def value_exist_check_id(location:str,id:int):
     
 def value_exist_check_user_name(location:str,user_name:str):
     conn, cursor = initial(location)
-
+    user_name = user_name.lower()
     cursor.execute("SELECT * FROM expenses WHERE user_name = ?", (user_name,))
 
     value = cursor.fetchone()

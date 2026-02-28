@@ -1,6 +1,6 @@
-from backend.src.initial import initial
+from backend.src.feature.initial import initial
 from typing import Optional
-from backend.src.value_exist_check import value_exist_check_id
+from backend.src.feature.value_exist_check import value_exist_check_id
 
 def update_values(location: str, id: int, user_name: Optional[str] = None, category: Optional[str] = None, expense: Optional[str] = None, date: Optional[str] = None):
     conn, cursor = initial(location)

@@ -1,3 +1,0 @@
-from backend.src.create_table import create_table
-
-create_table('backend/test/test_database/database.db')

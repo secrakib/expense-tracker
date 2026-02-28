@@ -1,6 +1,6 @@
-from backend.src.initial import initial
+from backend.src.feature.initial import initial
 from typing import Optional
-from backend.src.filter_and_show import filter_expenses
+from backend.src.feature.filter_and_show import filter_expenses
 
 def delete_record(location: str,
     user_name: str,
@@ -29,7 +29,7 @@ def delete_record(location: str,
     id_list = []
     output = filter_expenses(location, user_name, category, date, min_expense, max_expense)
     for i in  output:
-        id = i[4]
+        id = i[0]
         id_list.append(id)
         cursor.execute("DELETE FROM expenses WHERE id = ?", (id,))
         conn.commit()

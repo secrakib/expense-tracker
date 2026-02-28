@@ -1,4 +1,4 @@
-from backend.src.initial import initial
+from backend.src.feature.initial import initial
 
 def show_all(location:str,user_name:str):
     conn, cursor = initial(location)
