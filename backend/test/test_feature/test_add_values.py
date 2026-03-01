@@ -3,4 +3,4 @@ from backend.test.test_feature.globals import location
 
 
 
-add_values("Rajjaq", "games", 55.31, "2028-12-28",location)
+print(add_values("Rajjaq", "games", 55.31, "2028-12-28",location))

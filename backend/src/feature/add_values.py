@@ -1,4 +1,5 @@
 from backend.src.feature.initial import initial
+from sqlite3 import IntegrityError
 
 def add_values(user_name:str, category:str, expense:str, date:str,location:str)->None:
     '''
@@ -7,13 +8,16 @@ def add_values(user_name:str, category:str, expense:str, date:str,location:str)-
     '''
     conn,cursor = initial(location)
 
-    cursor.execute(
-        '''
-    INSERT INTO expenses (user_name, category, expense, date) VALUES (?,?,?,?)
-        ''',
-        (user_name.lower(), category.lower(), expense, date)
-    )
 
+    try:
+        cursor.execute(
+            '''
+        INSERT INTO expenses (user_name, category, expense, date) VALUES (?,?,?,?)
+            ''',
+            (user_name.lower(), category.lower(), expense, date)
+        )
+    except IntegrityError as e:
+        return {'messege':"Try Another User Name"}
     conn.commit()
     conn.close()
 
