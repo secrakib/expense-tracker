@@ -10,6 +10,7 @@ def initial(location:str):
     import sqlite3
     conn = sqlite3.connect(location)
     conn.execute("PRAGMA foreign_keys = ON")
+    
     cursor = conn.cursor()
 
     return conn,cursor

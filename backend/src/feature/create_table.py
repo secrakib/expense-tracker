@@ -15,16 +15,7 @@ def create_table(location:str)->None:
     
     conn,cursor = initial(location)
     cursor.execute("PRAGMA foreign_keys = ON")
-
-    cursor.execute(
-    """
-CREATE TABLE IF NOT EXISTS credentials(
-        user_name TEXT PRIMARY KEY,
-        password TEXT NOT NULL
-    )
-    """
-)
-
+    
     cursor.execute(
     """
 CREATE TABLE IF NOT EXISTS expenses(
