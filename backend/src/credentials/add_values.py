@@ -1,5 +1,5 @@
 from backend.src.credentials.initial import initial
-
+from sqlite3 import IntegrityError
 def add_values(user_name:str, password:str,location:str)->None:
     '''
     Params: user name , hashed password 
@@ -7,15 +7,20 @@ def add_values(user_name:str, password:str,location:str)->None:
     '''
     conn,cursor = initial(location)
 
-    cursor.execute(
-        '''
-    INSERT INTO CREDENTIALS (user_name, password) VALUES (?,?)
-        ''',
-        (user_name.lower(), password)
-    )
+    try:
+        cursor.execute(
+            '''
+        INSERT INTO CREDENTIALS (user_name, password) VALUES (?,?)
+            ''',
+            (user_name.lower(), password)
+        )
+    except IntegrityError as e:
+        if 'UNIQUE' in str(e):
+            print(f"Duplicate key Detected ")
+        else:
+            print(f"Error {e} Occured ")
+        return None
 
     conn.commit()
     conn.close()
-
-    return None
 
