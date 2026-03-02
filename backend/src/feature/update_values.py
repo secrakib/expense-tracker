@@ -1,17 +1,15 @@
 from backend.src.feature.initial import initial
 from typing import Optional
-from backend.src.feature.value_exist_check import value_exist_check_id
+from backend.src.feature.value_exist_check import value_exist_check_id,value_exist_check_user_name
 
-def update_values(location: str, id: int, user_name: Optional[str] = None, category: Optional[str] = None, expense: Optional[str] = None, date: Optional[str] = None):
+def update_values(location: str, id: int, user_name: str , category: Optional[str] = None, expense: Optional[str] = None, date: Optional[str] = None):
     conn, cursor = initial(location)
     
-    value_exist_check_id(location,id)
-
-    if user_name is None and category is None and expense is None and date is None:
+    if not value_exist_check_user_name(location,user_name) or not value_exist_check_id(location,id):
+        raise ValueError(f'id {id} or user name {user_name} not found')
+    
+    if category is None and expense is None and date is None:
         raise ValueError("At least one value should be given.")
-
-    if user_name is not None:
-        cursor.execute("UPDATE expenses SET user_name = ? WHERE id = ?", (user_name, id))
 
     if category is not None:
         cursor.execute("UPDATE expenses SET category = ? WHERE id = ?", (category, id))
