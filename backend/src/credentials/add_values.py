@@ -15,12 +15,10 @@ def add_values(user_name:str, password:str,location:str)->None:
             (user_name.lower(), password)
         )
     except IntegrityError as e:
-        if 'UNIQUE' in str(e):
-            print(f"Duplicate key Detected ")
-        else:
-            print(f"Error {e} Occured ")
-        return None
-
+        return {'message':"duplicate"}
+    
     conn.commit()
     conn.close()
+    
+    return None
 

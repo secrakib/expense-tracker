@@ -1,0 +1,5 @@
+txt = ""
+
+x = txt.strip()
+
+print(x)
