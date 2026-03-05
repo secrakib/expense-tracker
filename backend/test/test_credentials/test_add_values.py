@@ -3,4 +3,4 @@ from backend.test.test_feature.globals import location
 
 
 
-add_values("Rakin", password="adse4cc ",location =location)
+add_values("Rakib", password="adse4cc ",location =location)
