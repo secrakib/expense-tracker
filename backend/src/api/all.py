@@ -1,9 +1,13 @@
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
-from fastapi import Depends, FastAPI, HTTPException, status,Query, Response
+
+import jwt
+from fastapi import Depends, FastAPI, HTTPException, status,Query, Response,Cookie
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
-
-
+from pydantic import BaseModel,model_validator
+from datetime import date
 
 from backend.src.credentials.add_values import add_values as db_register
 from backend.src.credentials.create_table import create_table as create_credentials_table
@@ -15,24 +19,104 @@ from backend.src.feature.filter_and_show import filter_expenses as db_filter
 from backend.src.feature.initial import initial
 from backend.src.credentials.delete_user import delete_user as db_delete_user
 from backend.database.globals import location
-from backend.src.api.models.models import Token,RegisterRequest,AddExpenseRequest,UpdateExpenseRequest,DeleteExpenseRequest
-from backend.src.api.helpers.helpers import get_current_user,get_hashed_password_from_db,create_access_token
+
+# ── Config ──────────────────────────────────────────────────────────────────
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+ALGORITHM = "HS256"
 
 
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("dummypassword")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 app = FastAPI(title="Expense Tracker API")
 
 # ── DB init ──────────────────────────────────────────────────────────────────
 create_credentials_table(location)
 create_expenses_table(location)
 
+# ── Pydantic Models ──────────────────────────────────────────────────────────
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+class AddExpenseRequest(BaseModel):
+    category: str
+    expense: float
+    date: date  # YYYY-MM-DD
+
+
+class UpdateExpenseRequest(BaseModel):
+    id: int
+    category: Optional[str] = None
+    expense: Optional[float] = None
+    date: Optional[str] = None
+
+class DeleteExpenseRequest(BaseModel):
+    category: Optional[str] = None
+    date: Optional[str] = None
+    min_expense: Optional[float] = None
+    max_expense: Optional[float] = None
+
+    @model_validator(mode="after")
+    def at_least_one_filter(self):
+        filters = [
+            self.category,
+            self.date,
+            self.min_expense,
+            self.max_expense,
+        ]
+        if not any(f is not None and str(f).strip() != "" for f in filters):
+            raise ValueError("At least one filter required")
+        return self
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def get_hashed_password_from_db(username: str) -> Optional[str]:
+    conn, cursor = initial(location)
+    cursor.execute("SELECT password FROM credentials WHERE user_name = ?", (username.lower(),))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        password = row[0]
+    else:
+        password = None
+    return password
+
+def create_access_token(username: str, ACCESS_TOKEN_EXPIRE_MINUTES:int) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    return jwt.encode({"sub": username, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+
+'''async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        return username
+    except InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")'''
+
+async def get_current_user(access_token: Annotated[str | None, Cookie()] = None) -> str:
+    if access_token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return username
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.post("/register", status_code=201)
-def register(body: RegisterRequest)->dict:
+def register(body: RegisterRequest):
     """Register a new user with an encrypted password."""
     hashed = password_hash.hash(body.password)
     result = db_register(body.username, hashed, location)
@@ -44,7 +128,7 @@ def register(body: RegisterRequest)->dict:
 @app.post("/token")#, response_model=Token)
 def login(response: Response,
           form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-          ACCESS_TOKEN_EXPIRE_MINUTES:Annotated[int,Query(gt=0)] = 30)-> dict:
+          ACCESS_TOKEN_EXPIRE_MINUTES:Annotated[int,Query(gt=0)] = 30):
     """Login and receive a JWT access token."""
     hashed = get_hashed_password_from_db(form_data.username)
     if not hashed:
@@ -68,7 +152,7 @@ def login(response: Response,
 def add_expense(
     body: AddExpenseRequest,
     username: Annotated[str, Depends(get_current_user)]
-)-> dict:
+):
     """Add an expense. Username comes from JWT."""
     db_add_expense(username, body.category, body.expense, body.date, location)
     return {"message": "Expense added successfully."}
@@ -81,7 +165,7 @@ def read_expenses(
     date: Optional[str] = None,
     min_expense: Optional[float] = None,
     max_expense: Optional[float] = None
-)-> dict:
+):
     """Read/filter expenses. Username comes from JWT."""
     rows = db_filter(location, username, category, date, min_expense, max_expense)
     keys = ["id", "user_name", "category", "expense", "date"]
@@ -96,7 +180,7 @@ def read_expenses(
 def update_expense(
     body: UpdateExpenseRequest,
     username: Annotated[str, Depends(get_current_user)]
-)-> dict:
+):
     """Update an expense by ID. Username comes from JWT."""
     try:
         db_update(location, body.id, username, body.category, body.expense, body.date)
@@ -109,7 +193,7 @@ def update_expense(
 def delete_expense(
     body: DeleteExpenseRequest,
     username: Annotated[str, Depends(get_current_user)]
-)->dict:
+):
     """Delete expenses by filter. Username comes from JWT."""
     result = db_delete(location, username, body.category, body.date, body.min_expense, body.max_expense)
     return result
@@ -118,8 +202,8 @@ def delete_expense(
 @app.delete("/expenses/{username}", status_code=200)
 def delete_user(
     user_name: Annotated[str, Depends(get_current_user)]
-)->dict:
-    """Delete a user by username"""
+):
+    """Delete a user by username. Only the user themselves can delete their account."""
     try:
         result = db_delete_user(location, user_name.lower())
         return result
