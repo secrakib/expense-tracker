@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, status,Query
+from fastapi import Depends, FastAPI, HTTPException, status,Query, Response,Cookie
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
@@ -17,7 +17,7 @@ from backend.src.feature.delete_record import delete_record as db_delete
 from backend.src.feature.update_values import update_values as db_update
 from backend.src.feature.filter_and_show import filter_expenses as db_filter
 from backend.src.feature.initial import initial
-from backend.src.credentials.delete_user import delete_user
+from backend.src.credentials.delete_user import delete_user as db_delete_user
 from backend.database.globals import location
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ def create_access_token(username: str, ACCESS_TOKEN_EXPIRE_MINUTES:int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode({"sub": username, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str:
+'''async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
@@ -98,7 +98,20 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return username
     except InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")'''
+
+async def get_current_user(access_token: Annotated[str | None, Cookie()] = None) -> str:
+    if access_token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return username
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -112,8 +125,9 @@ def register(body: RegisterRequest):
     raise HTTPException(status_code=400, detail="Username already exists.")
 
 
-@app.post("/token", response_model=Token)
-def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+@app.post("/token")#, response_model=Token)
+def login(response: Response,
+          form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
           ACCESS_TOKEN_EXPIRE_MINUTES:Annotated[int,Query(gt=0)] = 30):
     """Login and receive a JWT access token."""
     hashed = get_hashed_password_from_db(form_data.username)
@@ -122,7 +136,16 @@ def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     if not password_hash.verify(form_data.password, hashed):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
-    return Token(access_token=create_access_token(form_data.username.lower(),ACCESS_TOKEN_EXPIRE_MINUTES), token_type="bearer")
+    #return Token(access_token=create_access_token(form_data.username.lower(),ACCESS_TOKEN_EXPIRE_MINUTES), token_type="bearer")
+    token = create_access_token(form_data.username.lower(), ACCESS_TOKEN_EXPIRE_MINUTES)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,       # JS cannot read it
+        secure=True,         # HTTPS only (disable in dev if needed)
+        samesite="lax"       # CSRF protection
+    )
+    return {"message": "Login successful"}
 
 
 @app.post("/expenses", status_code=201)
@@ -178,14 +201,11 @@ def delete_expense(
 
 @app.delete("/expenses/{username}", status_code=200)
 def delete_user(
-    username: str,
-    current_user: Annotated[str, Depends(get_current_user)]
+    user_name: Annotated[str, Depends(get_current_user)]
 ):
     """Delete a user by username. Only the user themselves can delete their account."""
-    if current_user != username.lower():
-        raise HTTPException(status_code=403, detail="Not a user.")
     try:
-        result = delete_user(location, username.lower())
+        result = db_delete_user(location, user_name.lower())
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
