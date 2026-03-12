@@ -41,7 +41,7 @@ def register(body: RegisterRequest)->dict:
     raise HTTPException(status_code=400, detail="Username already exists.")
 
 
-@app.post("/token")#, response_model=Token)
+@app.post("/token")
 def login(response: Response,
           form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
           ACCESS_TOKEN_EXPIRE_MINUTES:Annotated[int,Query(gt=0)] = 30)-> dict:
@@ -61,6 +61,7 @@ def login(response: Response,
         secure=True,         # HTTPS only (disable in dev if needed)
         samesite="lax"       # CSRF protection
     )
+    
     return {"message": "Login successful"}
 
 
