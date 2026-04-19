@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 # ── Point all DB operations at the test database ────────────────────────────
 import backend.database.globals as db_globals
-#db_globals.location = "backend/test/test_database/database.db"
+db_globals.location = "backend/test/test_database/database.db"
 
 # Import app AFTER patching the location
 from backend.src.api.main import app
