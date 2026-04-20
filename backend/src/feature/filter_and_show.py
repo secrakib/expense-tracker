@@ -9,30 +9,30 @@ def filter_expenses(
     date: Optional[str] = None,
     min_expense: Optional[float] = None,
     max_expense: Optional[float] = None,
-) -> list[tuple]:
+) -> list[dict]:
     """
-    Params: 
+    Params:
         location   - path to the database
         user_name  - filter by user name
-        category   - filter by category 
+        category   - filter by category
         date       - filter by date (e.g. '2024-01-15')
         min_expense - filter by minimum expense amount
         max_expense - filter by maximum expense amount
 
     Remember: user_name and category will be input as lowercase
-    
-    Returns a list of matching expense records as dicts.
+
+    Returns a list of matching expense records as dicts with keys:
+        id, user_name, category, expense, date
     """
     conn, cursor = initial(location)
 
     query = "SELECT * FROM expenses WHERE 1=1"
     params = []
 
-    value_exist_check_user_name(location,user_name)
+    value_exist_check_user_name(location, user_name)
 
     query += " AND user_name = ?"
     params.append(user_name.lower())
-
 
     if category:
         query += " AND category = ?"
@@ -50,12 +50,9 @@ def filter_expenses(
         query += " AND expense <= ?"
         params.append(max_expense)
 
-    
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
 
-    return rows
-
-
-
+    keys = ["id", "user_name", "category", "expense", "date"]
+    return [dict(zip(keys, row)) for row in rows]

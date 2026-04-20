@@ -44,7 +44,6 @@ def do_login(username="testuser", password="testpass123"):
     """Log in and store the cookie on the shared client instance."""
     response = client.post("/token", data={"username": username, "password": password})
     assert response.status_code == 200, f"Login failed: {response.text}"
-    # Persist the cookie on the client so subsequent requests are authenticated
     client.cookies.set("access_token", response.cookies["access_token"])
     return response
 
@@ -96,6 +95,7 @@ def test_06_add_expense_authenticated():
         json={"category": "food", "expense": 25.50, "date": "2024-06-01"},
     )
     assert response.status_code == 201
+    # add_values now returns a dict with a message key
     assert response.json()["message"] == "Expense added successfully."
 
 
@@ -106,14 +106,18 @@ def test_07_add_expense_unauthenticated():
         json={"category": "food", "expense": 25.50, "date": "2024-06-01"},
     )
     assert response.status_code == 401
-    do_login()  # restore auth for subsequent tests
+    do_login()
 
 
-def test_08_get_expenses():
+def test_08_get_expenses_returns_dicts():
+    """Expenses are now returned as dicts with named keys."""
     response = client.get("/expenses")
     assert response.status_code == 200
-    assert "expenses" in response.json()
-    assert len(response.json()["expenses"]) >= 1
+    expenses = response.json()["expenses"]
+    assert len(expenses) >= 1
+    # Verify dict shape — no more raw tuples
+    first = expenses[0]
+    assert set(first.keys()) == {"id", "user_name", "category", "expense", "date"}
 
 
 def test_09_get_expenses_filter_by_category():
@@ -135,7 +139,19 @@ def test_10_get_expenses_filter_by_min_max():
         assert 10 <= e["expense"] <= 30
 
 
-def test_11_update_expense():
+def test_11_get_categories():
+    """New endpoint — returns distinct categories for the user."""
+    response = client.get("/expenses/categories")
+    assert response.status_code == 200
+    data = response.json()
+    assert "categories" in data
+    assert isinstance(data["categories"], list)
+    assert "food" in data["categories"]
+    assert "transport" in data["categories"]
+
+
+def test_12_update_expense_returns_changes():
+    """update_values now returns updated_id and a changes dict."""
     expenses = client.get("/expenses").json()["expenses"]
     expense_id = expenses[0]["id"]
     response = client.put(
@@ -143,39 +159,46 @@ def test_11_update_expense():
         json={"id": expense_id, "category": "groceries", "expense": 99.99},
     )
     assert response.status_code == 200
-    assert str(expense_id) in response.json()["message"]
+    data = response.json()
+    assert data["updated_id"] == expense_id
+    assert "changes" in data
+    assert data["changes"]["category"] == "groceries"
+    assert data["changes"]["expense"] == 99.99
 
 
-def test_12_update_expense_not_found():
+def test_13_update_expense_not_found():
     response = client.put("/expenses", json={"id": 999999, "category": "ghost"})
     assert response.status_code == 404
 
 
-def test_13_delete_expense_by_category():
+def test_14_delete_expense_by_category():
     client.post(
         "/expenses",
         json={"category": "todelete", "expense": 5.00, "date": "2024-06-03"},
     )
     response = do_delete("/expenses", {"category": "todelete"})
     assert response.status_code == 200
-    assert response.json()["message"].startswith("1 record(s) deleted")
+    data = response.json()
+    assert data["message"].startswith("1 record(s) deleted")
+    assert isinstance(data["deleted_ids"], list)
+    assert len(data["deleted_ids"]) == 1
 
 
-def test_14_delete_expense_no_filter():
+def test_15_delete_expense_no_filter():
     response = do_delete("/expenses", {})
-    assert response.status_code == 422  # Validation: at least one filter required
+    assert response.status_code == 422  # Pydantic validation: at least one filter required
 
 
-def test_15_delete_user():
+def test_16_delete_user():
     client.post("/register", json={"username": "throwaway", "password": "pass123"})
     do_login(username="throwaway", password="pass123")
     response = client.delete("/expenses/throwaway")
     assert response.status_code == 200
     assert "deleted" in response.json()["message"].lower()
-    do_login()  # restore main user session
+    do_login()
 
 
-def test_16_access_after_logout():
+def test_17_access_after_logout():
     """After clearing cookies, requests should be rejected."""
     client.cookies.clear()
     response = client.get("/expenses")
