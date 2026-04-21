@@ -3,3 +3,8 @@ pwdlib==0.3.0
 pydantic==2.13.2
 PyJWT==2.12.1
 pytest==9.0.3
+langchain-groq==0.3.2
+langgraph==0.4.1
+langchain-core==0.3.58
+rapidfuzz==3.13.0
+
