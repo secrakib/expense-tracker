@@ -19,10 +19,14 @@ client = TestClient(app, raise_server_exceptions=True)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+# File: backend/test/test_api/test_api.py (Modify do_login function)
 def do_login(username: str = "testuser", password: str = "testpass123"):
     response = client.post("/token", data={"username": username, "password": password})
     assert response.status_code == 200, f"Login failed: {response.text}"
-    client.cookies.set("access_token", response.cookies["access_token"])
+    
+    # Extract token from response body dictionary and assign to test client headers
+    token = response.json()["access_token"]
+    client.headers.update({"Authorization": f"Bearer {token}"})
     return response
 
 
@@ -69,8 +73,12 @@ def test_02_register_duplicate_user():
 
 def test_03_login_success():
     response = do_login()
-    assert response.json() == {"message": "Login successful"}
-    assert "access_token" in response.cookies
+    data = response.json()
+    
+    # Assert against the updated JSON payload returned by the backend
+    assert data.get("message") == "Login successful"
+    assert "access_token" in data
+    assert data.get("token_type") == "bearer"
 
 
 def test_04_login_wrong_password():
@@ -98,13 +106,16 @@ def test_06_add_expense_authenticated():
 
 
 def test_07_add_expense_unauthenticated():
+    # Clear both mechanisms to ensure a clean state
     client.cookies.clear()
+    client.headers.pop("Authorization", None)  # <-- Drop the bearer header
+    
     response = client.post(
         "/expenses",
         json={"category": "food", "expense": 25.50, "date": "2024-06-01"},
     )
     assert response.status_code == 401
-    do_login()  # restore session
+    do_login()  # restore session for subsequent tests
 
 
 def test_08_get_expenses_returns_dicts():
@@ -190,7 +201,10 @@ def test_16_delete_user():
 
 
 def test_17_access_after_logout():
+    # Simulate an absolute logout
     client.cookies.clear()
+    client.headers.pop("Authorization", None)  # <-- Drop the bearer header
+    
     response = client.get("/expenses")
     assert response.status_code == 401
 
