@@ -1,31 +1,24 @@
-from backend.src.feature.initial import initial
+from backend.src.credentials.initial import initial
 
-def create_table(location:str)->None:
 
-    '''
-    Params: Take location of database
+def create_table(database_url: str) -> None:
+    """
+    Creates the credentials table if it does not already exist.
 
-    Function for Creating table with
-    user_name text Primary key
-    password text
-    '''
-    
-    conn,cursor = initial(location)
+    Schema:
+        user_name  TEXT  PRIMARY KEY
+        password   TEXT  NOT NULL
+    """
+    conn, cursor = initial(database_url)
 
     cursor.execute(
-    """
-CREATE TABLE IF NOT EXISTS credentials(
-        user_name TEXT PRIMARY KEY,
-        password TEXT NOT NULL
+        """
+        CREATE TABLE IF NOT EXISTS credentials (
+            user_name TEXT PRIMARY KEY,
+            password  TEXT NOT NULL
+        )
+        """
     )
-    """
-)
 
     conn.commit()
     conn.close()
-
-    
-
-    return None
- 
-

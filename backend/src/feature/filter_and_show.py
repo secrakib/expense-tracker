@@ -1,9 +1,10 @@
 from backend.src.feature.initial import initial
-from typing import Optional
 from backend.src.feature.value_exist_check import value_exist_check_user_name
+from typing import Optional
+
 
 def filter_expenses(
-    location: str,
+    database_url: str,
     user_name: str,
     category: Optional[str] = None,
     date: Optional[str] = None,
@@ -11,43 +12,41 @@ def filter_expenses(
     max_expense: Optional[float] = None,
 ) -> list[dict]:
     """
+    Returns matching expense records as a list of dicts.
+
     Params:
-        location   - path to the database
-        user_name  - filter by user name
-        category   - filter by category
-        date       - filter by date (e.g. '2024-01-15')
-        min_expense - filter by minimum expense amount
-        max_expense - filter by maximum expense amount
+        database_url - PostgreSQL connection string
+        user_name    - filter by user (matched lowercase)
+        category     - optional category filter (matched lowercase)
+        date         - optional exact date filter (YYYY-MM-DD)
+        min_expense  - optional minimum amount (inclusive)
+        max_expense  - optional maximum amount (inclusive)
 
-    Remember: user_name and category will be input as lowercase
-
-    Returns a list of matching expense records as dicts with keys:
-        id, user_name, category, expense, date
+    Returns:
+        List of dicts with keys: id, user_name, category, expense, date
     """
-    conn, cursor = initial(location)
+    conn, cursor = initial(database_url)
 
-    query = "SELECT * FROM expenses WHERE 1=1"
-    params = []
+    # Raise early if user has no expenses (preserves original behaviour)
+    value_exist_check_user_name(database_url, user_name)
 
-    value_exist_check_user_name(location, user_name)
-
-    query += " AND user_name = ?"
-    params.append(user_name.lower())
+    query = "SELECT * FROM expenses WHERE user_name = %s"
+    params: list = [user_name.lower()]
 
     if category:
-        query += " AND category = ?"
+        query += " AND category = %s"
         params.append(category.lower())
 
     if date:
-        query += " AND date = ?"
+        query += " AND date = %s"
         params.append(date)
 
     if min_expense is not None:
-        query += " AND expense >= ?"
+        query += " AND expense >= %s"
         params.append(min_expense)
 
     if max_expense is not None:
-        query += " AND expense <= ?"
+        query += " AND expense <= %s"
         params.append(max_expense)
 
     cursor.execute(query, params)

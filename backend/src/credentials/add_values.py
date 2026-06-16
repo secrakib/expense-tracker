@@ -1,24 +1,31 @@
 from backend.src.credentials.initial import initial
-from sqlite3 import IntegrityError
-def add_values(user_name:str, password:str,location:str)->None:
-    '''
-    Params: user name , hashed password 
-    Function to add values to table
-    '''
-    conn,cursor = initial(location)
+from psycopg2 import errors as pg_errors
+
+
+def add_values(user_name: str, password: str, database_url: str) -> dict | None:
+    """
+    Inserts a new user into the credentials table.
+
+    Params:
+        user_name    - will be stored lowercase
+        password     - pre-hashed password string
+        database_url - PostgreSQL connection string
+
+    Returns:
+        None on success, or {'message': 'duplicate'} if user_name already exists.
+    """
+    conn, cursor = initial(database_url)
 
     try:
         cursor.execute(
-            '''
-        INSERT INTO CREDENTIALS (user_name, password) VALUES (?,?)
-            ''',
-            (user_name.lower(), password)
+            "INSERT INTO credentials (user_name, password) VALUES (%s, %s)",
+            (user_name.lower(), password),
         )
-    except IntegrityError as e:
-        return {'message':"duplicate"}
-    
-    conn.commit()
-    conn.close()
-    
-    return None
+        conn.commit()
+    except pg_errors.UniqueViolation:
+        conn.rollback()
+        return {"message": "duplicate"}
+    finally:
+        conn.close()
 
+    return None

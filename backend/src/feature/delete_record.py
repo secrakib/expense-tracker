@@ -1,10 +1,10 @@
 from backend.src.feature.initial import initial
-from typing import Optional
 from backend.src.feature.filter_and_show import filter_expenses
+from typing import Optional
 
 
 def delete_record(
-    location: str,
+    database_url: str,
     user_name: str,
     category: Optional[str] = None,
     date: Optional[str] = None,
@@ -13,34 +13,32 @@ def delete_record(
 ) -> dict:
     """
     Deletes expense records matching the given filters for the user.
-    Filters first, then deletes matching ids.
 
     Params:
-        location    - path to the database
-        user_name   - filter by user name
-        category    - filter by category
-        date        - filter by date (e.g. '2024-01-15')
-        min_expense - filter by minimum expense amount
-        max_expense - filter by maximum expense amount
+        database_url - PostgreSQL connection string
+        user_name    - filter by user name
+        category     - optional category filter
+        date         - optional exact date filter (YYYY-MM-DD)
+        min_expense  - optional minimum amount (inclusive)
+        max_expense  - optional maximum amount (inclusive)
 
     Returns:
         dict with keys: message (str), deleted_ids (list[int])
 
     Raises:
-        ValueError if no filters are provided
+        ValueError if no filters are provided.
     """
     if not any([category, date, min_expense is not None, max_expense is not None]):
         raise ValueError("At least one filter must be provided.")
 
-    conn, cursor = initial(location)
+    matching = filter_expenses(database_url, user_name, category, date, min_expense, max_expense)
 
-    matching = filter_expenses(location, user_name, category, date, min_expense, max_expense)
-    deleted_ids = []
+    conn, cursor = initial(database_url)
+    deleted_ids: list[int] = []
 
     for record in matching:
-        record_id = record["id"]
-        cursor.execute("DELETE FROM expenses WHERE id = ?", (record_id,))
-        deleted_ids.append(record_id)
+        cursor.execute("DELETE FROM expenses WHERE id = %s", (record["id"],))
+        deleted_ids.append(record["id"])
 
     conn.commit()
     conn.close()

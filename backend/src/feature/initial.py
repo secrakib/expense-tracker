@@ -1,15 +1,19 @@
+import psycopg2
+from psycopg2.extensions import connection, cursor as Cursor
+from typing import Tuple
 
 
-def initial(location:str):
-    '''
-    Function needed for every query
-    and connect to database
+def initial(database_url: str) -> Tuple[connection, Cursor]:
+    """
+    Connect to a PostgreSQL database.
 
-    Return : conn,cursor
-    '''
-    import sqlite3
-    conn = sqlite3.connect(location)
-    conn.execute("PRAGMA foreign_keys = ON")
+    Params:
+        database_url - libpq connection string, e.g.
+                       "postgresql://user:pass@host:5432/dbname"
+
+    Returns:
+        (conn, cursor) — caller is responsible for commit/close.
+    """
+    conn = psycopg2.connect(database_url)
     cursor = conn.cursor()
-
-    return conn,cursor
+    return conn, cursor

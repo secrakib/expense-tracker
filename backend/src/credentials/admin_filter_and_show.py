@@ -1,32 +1,20 @@
 from backend.src.credentials.initial import initial
-from typing import Optional
 
 
-def admin_filter_expenses(
-    location: str,
-    user_name: str
-) -> list[tuple]:
+def admin_filter_expenses(database_url: str, user_name: str) -> list[tuple]:
     """
-    Params: 
-        location   - path to the database
-        user_name  - filter by user name
-        
+    Returns all credential rows matching the given user_name.
 
-    Remember: user_name will be input as lowercase
-    
-    Returns a list of matching expense records as dicts.
+    Params:
+        database_url - PostgreSQL connection string
+        user_name    - looked up as lowercase
     """
-    conn, cursor = initial(location)
+    conn, cursor = initial(database_url)
 
-    query = "SELECT * FROM credentials WHERE 1=1"
-    params = []
-
-
-    query += " AND user_name = ?"
-    params.append(user_name.lower())
-
-    
-    cursor.execute(query, params)
+    cursor.execute(
+        "SELECT * FROM credentials WHERE user_name = %s",
+        (user_name.lower(),),
+    )
     rows = cursor.fetchall()
     conn.close()
 

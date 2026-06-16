@@ -1,15 +1,17 @@
-from pydantic import BaseModel,model_validator
-from typing import Annotated, Optional
+from pydantic import BaseModel, model_validator
+from typing import Optional
 from datetime import date
 
-# ── Pydantic Models ──────────────────────────────────────────────────────────
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class RegisterRequest(BaseModel):
     username: str
     password: str
+
 
 class AddExpenseRequest(BaseModel):
     category: str
@@ -23,6 +25,7 @@ class UpdateExpenseRequest(BaseModel):
     expense: Optional[float] = None
     date: Optional[str] = None
 
+
 class DeleteExpenseRequest(BaseModel):
     category: Optional[str] = None
     date: Optional[str] = None
@@ -31,12 +34,7 @@ class DeleteExpenseRequest(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one_filter(self):
-        filters = [
-            self.category,
-            self.date,
-            self.min_expense,
-            self.max_expense,
-        ]
+        filters = [self.category, self.date, self.min_expense, self.max_expense]
         if not any(f is not None and str(f).strip() != "" for f in filters):
             raise ValueError("At least one filter required")
         return self
