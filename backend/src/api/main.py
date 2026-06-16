@@ -70,13 +70,6 @@ def login(
             detail="Incorrect username or password",
         )
     token = create_access_token(form_data.username.lower(), ACCESS_TOKEN_EXPIRE_MINUTES)
-    '''response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )'''
     return {
         "access_token": token, 
         "token_type": "bearer", 
