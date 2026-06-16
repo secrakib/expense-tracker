@@ -1,55 +1,32 @@
 """
-API tests for Expense Tracker using FastAPI TestClient.
-Tests run sequentially against the test database.
-Run with: pytest backend/test/test_api/test_api.py -v -s
-"""
+Test: FastAPI endpoints  (PostgreSQL)
 
+Replaces the SQLite-based test_api.py. All DB setup/teardown
+uses the real PostgreSQL DATABASE_URL from the environment.
+"""
 import json as json_lib
 import pytest
 from fastapi.testclient import TestClient
 
-# ── Point all DB operations at the test database ────────────────────────────
-import backend.database.globals as db_globals
-db_globals.location = "backend/test/test_database/database.db"
-
-# Import app AFTER patching the location
+from backend.database.globals import DATABASE_URL
 from backend.src.api.main import app
 from backend.src.credentials.create_table import create_table as create_credentials_table
-from backend.src.feature.create_table import create_table as create_expenses_table
 from backend.src.credentials.delete_table import delete_table
+from backend.src.feature.create_table import create_table as create_expenses_table
 
-TEST_DB = "backend/test/test_database/database.db"
-
-# Single client instance so cookies persist across requests
 client = TestClient(app, raise_server_exceptions=True)
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_db():
-    """Create fresh tables before all tests, drop them after."""
-    delete_table(TEST_DB, "expenses")
-    delete_table(TEST_DB, "credentials")
-    create_credentials_table(TEST_DB)
-    create_expenses_table(TEST_DB)
-    yield
-    delete_table(TEST_DB, "expenses")
-    delete_table(TEST_DB, "credentials")
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def do_login(username="testuser", password="testpass123"):
-    """Log in and store the cookie on the shared client instance."""
+def do_login(username: str = "testuser", password: str = "testpass123"):
     response = client.post("/token", data={"username": username, "password": password})
     assert response.status_code == 200, f"Login failed: {response.text}"
     client.cookies.set("access_token", response.cookies["access_token"])
     return response
 
 
-def do_delete(url, body: dict):
-    """Helper for DELETE requests with a JSON body (TestClient workaround)."""
+def do_delete(url: str, body: dict):
     return client.request(
         "DELETE",
         url,
@@ -58,16 +35,34 @@ def do_delete(url, body: dict):
     )
 
 
-# ── Tests ──────────────────────────────────────────────────────────────────────
+# ── fixtures ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_db():
+    """Drop and recreate tables once per test session."""
+    delete_table(DATABASE_URL, "expenses")
+    delete_table(DATABASE_URL, "credentials")
+    create_credentials_table(DATABASE_URL)
+    create_expenses_table(DATABASE_URL)
+    yield
+    delete_table(DATABASE_URL, "expenses")
+    delete_table(DATABASE_URL, "credentials")
+
+
+# ── auth ──────────────────────────────────────────────────────────────────────
 
 def test_01_register_user():
-    response = client.post("/register", json={"username": "testuser", "password": "testpass123"})
+    response = client.post(
+        "/register", json={"username": "testuser", "password": "testpass123"}
+    )
     assert response.status_code == 201
     assert "registered successfully" in response.json()["message"]
 
 
 def test_02_register_duplicate_user():
-    response = client.post("/register", json={"username": "testuser", "password": "testpass123"})
+    response = client.post(
+        "/register", json={"username": "testuser", "password": "testpass123"}
+    )
     assert response.status_code == 400
     assert "already exists" in response.json()["detail"]
 
@@ -79,7 +74,9 @@ def test_03_login_success():
 
 
 def test_04_login_wrong_password():
-    response = client.post("/token", data={"username": "testuser", "password": "wrongpass"})
+    response = client.post(
+        "/token", data={"username": "testuser", "password": "wrongpass"}
+    )
     assert response.status_code == 401
 
 
@@ -88,6 +85,8 @@ def test_05_login_unknown_user():
     assert response.status_code == 401
 
 
+# ── expenses CRUD ─────────────────────────────────────────────────────────────
+
 def test_06_add_expense_authenticated():
     do_login()
     response = client.post(
@@ -95,7 +94,6 @@ def test_06_add_expense_authenticated():
         json={"category": "food", "expense": 25.50, "date": "2024-06-01"},
     )
     assert response.status_code == 201
-    # add_values now returns a dict with a message key
     assert response.json()["message"] == "Expense added successfully."
 
 
@@ -106,18 +104,15 @@ def test_07_add_expense_unauthenticated():
         json={"category": "food", "expense": 25.50, "date": "2024-06-01"},
     )
     assert response.status_code == 401
-    do_login()
+    do_login()  # restore session
 
 
 def test_08_get_expenses_returns_dicts():
-    """Expenses are now returned as dicts with named keys."""
     response = client.get("/expenses")
     assert response.status_code == 200
     expenses = response.json()["expenses"]
     assert len(expenses) >= 1
-    # Verify dict shape — no more raw tuples
-    first = expenses[0]
-    assert set(first.keys()) == {"id", "user_name", "category", "expense", "date"}
+    assert set(expenses[0].keys()) == {"id", "user_name", "category", "expense", "date"}
 
 
 def test_09_get_expenses_filter_by_category():
@@ -140,7 +135,6 @@ def test_10_get_expenses_filter_by_min_max():
 
 
 def test_11_get_categories():
-    """New endpoint — returns distinct categories for the user."""
     response = client.get("/expenses/categories")
     assert response.status_code == 200
     data = response.json()
@@ -151,7 +145,6 @@ def test_11_get_categories():
 
 
 def test_12_update_expense_returns_changes():
-    """update_values now returns updated_id and a changes dict."""
     expenses = client.get("/expenses").json()["expenses"]
     expense_id = expenses[0]["id"]
     response = client.put(
@@ -161,13 +154,12 @@ def test_12_update_expense_returns_changes():
     assert response.status_code == 200
     data = response.json()
     assert data["updated_id"] == expense_id
-    assert "changes" in data
     assert data["changes"]["category"] == "groceries"
     assert data["changes"]["expense"] == 99.99
 
 
 def test_13_update_expense_not_found():
-    response = client.put("/expenses", json={"id": 999999, "category": "ghost"})
+    response = client.put("/expenses", json={"id": 999_999_999, "category": "ghost"})
     assert response.status_code == 404
 
 
@@ -180,13 +172,12 @@ def test_14_delete_expense_by_category():
     assert response.status_code == 200
     data = response.json()
     assert data["message"].startswith("1 record(s) deleted")
-    assert isinstance(data["deleted_ids"], list)
     assert len(data["deleted_ids"]) == 1
 
 
-def test_15_delete_expense_no_filter():
+def test_15_delete_expense_no_filter_returns_422():
     response = do_delete("/expenses", {})
-    assert response.status_code == 422  # Pydantic validation: at least one filter required
+    assert response.status_code == 422
 
 
 def test_16_delete_user():
@@ -195,11 +186,30 @@ def test_16_delete_user():
     response = client.delete("/expenses/throwaway")
     assert response.status_code == 200
     assert "deleted" in response.json()["message"].lower()
-    do_login()
+    do_login()  # restore primary session
 
 
 def test_17_access_after_logout():
-    """After clearing cookies, requests should be rejected."""
     client.cookies.clear()
     response = client.get("/expenses")
     assert response.status_code == 401
+
+
+def test_18_filter_by_date():
+    do_login()
+    client.post(
+        "/expenses",
+        json={"category": "datecheck", "expense": 3.33, "date": "2000-01-01"},
+    )
+    response = client.get("/expenses?date=2000-01-01")
+    assert response.status_code == 200
+    expenses = response.json()["expenses"]
+    assert len(expenses) >= 1
+    assert all(str(e["date"]) == "2000-01-01" for e in expenses)
+
+
+def test_19_add_expense_invalid_payload():
+    do_login()
+    # missing required fields
+    response = client.post("/expenses", json={"category": "food"})
+    assert response.status_code == 422
