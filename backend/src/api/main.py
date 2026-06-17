@@ -1,9 +1,9 @@
 from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pwdlib import PasswordHash
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
+from pwdlib import PasswordHash
 
 from backend.database.globals import DATABASE_URL
 from backend.src.credentials.add_values import add_values as db_register
@@ -30,17 +30,14 @@ from backend.src.api.models.models import (
 
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("dummypassword")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# ← REMOVED: oauth2_scheme defined here; it now lives in helpers.py
 
 app = FastAPI(title="Expense Tracker API")
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# ADD this block. During development allow all origins; before going to
-# production replace ["*"] with your actual Streamlit URL, e.g.:
-# ["https://my-app.streamlit.app", "http://localhost:8501"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # tighten this before production
+    allow_origins=["*"],        # tighten to your Streamlit URL before production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,31 +60,28 @@ def register(body: RegisterRequest) -> dict:
     raise HTTPException(status_code=400, detail="Username already exists.")
 
 
-@app.post("/token", response_model=Token)
+@app.post("/token", response_model=Token)    # ← response_model tells Swagger the token shape
 def login(
-    response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     ACCESS_TOKEN_EXPIRE_MINUTES: Annotated[int, Query(gt=0)] = 30,
-) -> dict:
-    """Login and set a JWT access token via httponly cookie."""
+) -> Token:
+    """Login — use the Authorize button in Swagger UI or send as Bearer token."""
     hashed = get_hashed_password_from_db(form_data.username)
     if not hashed:
-        password_hash.verify(form_data.password, DUMMY_HASH)  # timing-safe
+        password_hash.verify(form_data.password, DUMMY_HASH)  # timing-safe dummy check
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     if not password_hash.verify(form_data.password, hashed):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(form_data.username.lower(), ACCESS_TOKEN_EXPIRE_MINUTES)
-    return {
-        "access_token": token, 
-        "token_type": "bearer", 
-        "message": "Login successful"
-    }
+    return Token(access_token=token, token_type="bearer")
 
 
 @app.post("/expenses", status_code=201)
