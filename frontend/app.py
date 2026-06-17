@@ -6,17 +6,18 @@ Set BACKEND_URL in the environment or update the constant below.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 import requests
 import streamlit as st
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-BACKEND_URL: str = os.getenv("BACKEND_URL", "http://backend:8000")
+BACKEND_URL: str = os.getenv("BACKEND_URL", "http://backend:8000").rstrip("/")
 
 st.set_page_config(
     page_title="💰 Expense Tracker",
@@ -67,10 +68,8 @@ def api_login(username: str, password: str) -> tuple[bool, str]:
         if r.status_code == 200:
             data = r.json()
             token = data.get("access_token")
-            
-            # Key Fix: Attach the Bearer token directly to the persistent session
+            # Attach the Bearer token to the persistent session
             _session().headers.update({"Authorization": f"Bearer {token}"})
-            
             return True, "Login successful."
         return False, r.json().get("detail", "Login failed.")
     except requests.RequestException as e:
@@ -78,11 +77,13 @@ def api_login(username: str, password: str) -> tuple[bool, str]:
 
 
 def api_logout() -> None:
-    # Clear both cookies and global headers
     _session().cookies.clear()
     _session().headers.pop("Authorization", None)
     st.session_state["logged_in"] = False
     st.session_state["username"] = ""
+    # Clear any cached preview data
+    st.session_state.pop("del_preview", None)
+
 
 def api_get_expenses(
     category: Optional[str] = None,
@@ -103,6 +104,8 @@ def api_get_expenses(
         r = _session().get(f"{BACKEND_URL}/expenses", params=params, timeout=10)
         if r.status_code == 200:
             return True, r.json().get("expenses", [])
+        if r.status_code == 401:
+            return False, "Session expired. Please sign in again."
         return False, r.json().get("detail", "Failed to fetch expenses.")
     except requests.RequestException as e:
         return False, f"Network error: {e}"
@@ -127,6 +130,8 @@ def api_add_expense(category: str, expense: float, date_val: str) -> tuple[bool,
         )
         if r.status_code == 201:
             return True, r.json().get("message", "Expense added.")
+        if r.status_code == 401:
+            return False, "Session expired. Please sign in again."
         return False, r.json().get("detail", "Failed to add expense.")
     except requests.RequestException as e:
         return False, f"Network error: {e}"
@@ -150,6 +155,8 @@ def api_update_expense(
         if r.status_code == 200:
             data = r.json()
             return True, f"Updated ID {data['updated_id']} — changes: {data['changes']}"
+        if r.status_code == 401:
+            return False, "Session expired. Please sign in again."
         return False, r.json().get("detail", "Failed to update expense.")
     except requests.RequestException as e:
         return False, f"Network error: {e}"
@@ -180,6 +187,8 @@ def api_delete_expense(
         if r.status_code == 200:
             data = r.json()
             return True, f"{data['message']} (IDs: {data['deleted_ids']})"
+        if r.status_code == 401:
+            return False, "Session expired. Please sign in again."
         return False, r.json().get("detail", "Failed to delete expenses.")
     except requests.RequestException as e:
         return False, f"Network error: {e}"
@@ -193,6 +202,8 @@ def api_delete_account() -> tuple[bool, str]:
         )
         if r.status_code == 200:
             return True, r.json().get("message", "Account deleted.")
+        if r.status_code == 401:
+            return False, "Session expired. Please sign in again."
         return False, r.json().get("detail", "Failed to delete account.")
     except requests.RequestException as e:
         return False, f"Network error: {e}"
@@ -252,38 +263,39 @@ def page_view() -> None:
         col3, col4 = st.columns(2)
         min_exp = col3.number_input("Min amount", min_value=0.0, value=0.0, key="view_min")
         max_exp = col4.number_input("Max amount", min_value=0.0, value=0.0, key="view_max")
-        apply = st.button("Apply Filters", use_container_width=True)
+        st.button("Apply Filters", use_container_width=True)  # triggers rerun naturally
 
     date_str = str(date_filter_val) if date_filter_val else None
     min_val = min_exp if min_exp > 0 else None
     max_val = max_exp if max_exp > 0 else None
 
-    if apply or True:  # always load on render
-        ok, data = api_get_expenses(
-            category=cat_filter or None,
-            date_filter=date_str,
-            min_expense=min_val,
-            max_expense=max_val,
-        )
-        if ok:
-            if not data:
-                st.info("No expenses found.")
-            else:
-                # Reformat for display
-                display = [
-                    {
-                        "ID": r["id"],
-                        "Category": r["category"],
-                        "Amount (£)": f"{r['expense']:.2f}",
-                        "Date": str(r["date"]),
-                    }
-                    for r in data
-                ]
-                st.dataframe(display, use_container_width=True, hide_index=True)
-                total = sum(r["expense"] for r in data)
-                st.metric("Total", f"£{total:,.2f}")
+    ok, data = api_get_expenses(
+        category=cat_filter or None,
+        date_filter=date_str,
+        min_expense=min_val,
+        max_expense=max_val,
+    )
+    if ok:
+        if not data:
+            st.info("No expenses found.")
         else:
-            st.error(data)
+            display = [
+                {
+                    "ID": r["id"],
+                    "Category": r["category"],
+                    "Amount (£)": f"{r['expense']:.2f}",
+                    "Date": str(r["date"]),
+                }
+                for r in data
+            ]
+            st.dataframe(display, use_container_width=True, hide_index=True)
+            total = sum(r["expense"] for r in data)
+            st.metric("Total", f"£{total:,.2f}")
+    else:
+        st.error(data)
+        if "Session expired" in str(data):
+            api_logout()
+            st.rerun()
 
 
 def page_add() -> None:
@@ -313,6 +325,9 @@ def page_add() -> None:
                 st.success(msg)
             else:
                 st.error(msg)
+                if "Session expired" in msg:
+                    api_logout()
+                    st.rerun()
 
 
 def page_update() -> None:
@@ -321,6 +336,9 @@ def page_update() -> None:
     ok, data = api_get_expenses()
     if not ok:
         st.error(data)
+        if "Session expired" in str(data):
+            api_logout()
+            st.rerun()
         return
     if not data:
         st.info("No expenses to update.")
@@ -332,7 +350,6 @@ def page_update() -> None:
     }
     chosen_label = st.selectbox("Select expense to edit", list(id_map.keys()), key="upd_sel")
     expense_id = id_map[chosen_label]
-    chosen = next(r for r in data if r["id"] == expense_id)
 
     st.divider()
     st.caption("Leave a field blank / zero to keep the current value.")
@@ -374,6 +391,9 @@ def page_update() -> None:
                 st.success(msg)
             else:
                 st.error(msg)
+                if "Session expired" in msg:
+                    api_logout()
+                    st.rerun()
 
 
 def page_delete() -> None:
@@ -402,37 +422,54 @@ def page_delete() -> None:
         )
         if ok:
             st.session_state["del_preview"] = data
+            # Store the filter params used for preview so delete uses the same
+            st.session_state["del_params"] = {
+                "category": cat_filter or None,
+                "date_filter": date_str,
+                "min_val": min_val,
+                "max_val": max_val,
+            }
         else:
             st.error(data)
+            if "Session expired" in str(data):
+                api_logout()
+                st.rerun()
 
-    preview = st.session_state.get("del_preview", [])
-    if preview:
-        st.subheader(f"{len(preview)} expense(s) will be deleted:")
-        display = [
-            {
-                "ID": r["id"],
-                "Category": r["category"],
-                "Amount (£)": f"{r['expense']:.2f}",
-                "Date": str(r["date"]),
-            }
-            for r in preview
-        ]
-        st.dataframe(display, use_container_width=True, hide_index=True)
+    preview = st.session_state.get("del_preview")
 
-        if st.button("✅ Confirm Delete", type="primary", use_container_width=True):
-            ok, msg = api_delete_expense(
-                category=cat_filter or None,
-                date_filter=date_str,
-                min_expense=min_val,
-                max_expense=max_val,
-            )
-            if ok:
-                st.success(msg)
-                st.session_state["del_preview"] = []
-            else:
-                st.error(msg)
-    elif preview == []:
-        st.info("No matching expenses found.")
+    if preview is not None:
+        if len(preview) == 0:
+            st.info("No matching expenses found.")
+        else:
+            st.subheader(f"{len(preview)} expense(s) will be deleted:")
+            display = [
+                {
+                    "ID": r["id"],
+                    "Category": r["category"],
+                    "Amount (£)": f"{r['expense']:.2f}",
+                    "Date": str(r["date"]),
+                }
+                for r in preview
+            ]
+            st.dataframe(display, use_container_width=True, hide_index=True)
+
+            if st.button("✅ Confirm Delete", type="primary", use_container_width=True):
+                params = st.session_state.get("del_params", {})
+                ok, msg = api_delete_expense(
+                    category=params.get("category"),
+                    date_filter=params.get("date_filter"),
+                    min_expense=params.get("min_val"),
+                    max_expense=params.get("max_val"),
+                )
+                if ok:
+                    st.success(msg)
+                    st.session_state.pop("del_preview", None)
+                    st.session_state.pop("del_params", None)
+                else:
+                    st.error(msg)
+                    if "Session expired" in msg:
+                        api_logout()
+                        st.rerun()
 
 
 def page_account() -> None:
@@ -463,9 +500,8 @@ def main() -> None:
         page_auth()
         return
 
-    # Sidebar navigation
     with st.sidebar:
-        st.markdown(f"### 💰 Expense Tracker")
+        st.markdown("### 💰 Expense Tracker")
         st.caption(f"Signed in as **{_username()}**")
         st.divider()
         page = st.radio(
