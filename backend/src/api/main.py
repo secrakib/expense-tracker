@@ -3,6 +3,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database.globals import DATABASE_URL
 from backend.src.credentials.add_values import add_values as db_register
@@ -33,6 +34,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI(title="Expense Tracker API")
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# ADD this block. During development allow all origins; before going to
+# production replace ["*"] with your actual Streamlit URL, e.g.:
+# ["https://my-app.streamlit.app", "http://localhost:8501"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # tighten this before production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ── DB init ───────────────────────────────────────────────────────────────────
 create_credentials_table(DATABASE_URL)
 create_expenses_table(DATABASE_URL)
@@ -50,7 +63,7 @@ def register(body: RegisterRequest) -> dict:
     raise HTTPException(status_code=400, detail="Username already exists.")
 
 
-@app.post("/token")
+@app.post("/token", response_model=Token)
 def login(
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
