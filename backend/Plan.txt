@@ -1,6 +1,0 @@
-1.Delete record (Done)
-2.filter and show (Done)
-3.Delete table 
-4.Unique user_name
-6.Check code for exception handling
-7.sign up and sign in
